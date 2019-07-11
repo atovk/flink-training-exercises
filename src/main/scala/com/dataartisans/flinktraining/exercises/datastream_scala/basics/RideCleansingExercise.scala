@@ -54,7 +54,7 @@ object RideCleansingExercise extends ExerciseBase {
 
     val filteredRides = rides
       // filter out rides that do not start and end in NYC
-      .filter(ride => throw new MissingSolutionException)
+      .filter(ride => GeoUtils.isInNYC(ride.startLon, ride.startLat) && GeoUtils.isInNYC(ride.endLon, ride.endLat))
 
     // print the filtered stream
     printOrTest(filteredRides)
