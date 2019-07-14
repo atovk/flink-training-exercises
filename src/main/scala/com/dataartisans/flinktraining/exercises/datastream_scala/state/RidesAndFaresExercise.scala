@@ -47,7 +47,7 @@ object RidesAndFaresExercise {
     val ridesFile = params.get("rides", ExerciseBase.pathToRideData)
     val faresFile = params.get("fares", ExerciseBase.pathToFareData)
 
-    val delay = 60;               // at most 60 seconds of delay
+    val delay = 60; // at most 60 seconds of delay
     val servingSpeedFactor = 1800 // 30 minutes worth of events are served every second
 
     // set up streaming execution environment
@@ -73,15 +73,41 @@ object RidesAndFaresExercise {
     env.execute("Join Rides with Fares (scala RichCoFlatMap)")
   }
 
+  /**
+    * 基于流的connect 时，需要在流的两端进行collect 因为流的触发可能某时段无法找到对应的异端流数据导致关联空集
+    *
+    * 疑惑：
+    *     什么业务场景/何时才需要进行 [STATE].clear
+    */
   class EnrichmentFunction extends RichCoFlatMapFunction[TaxiRide, TaxiFare, (TaxiRide, TaxiFare)] {
 
+    // keyed, managed state
+    lazy val rideState: ValueState[TaxiRide] = getRuntimeContext.getState(
+      new ValueStateDescriptor[TaxiRide]("saved ride", classOf[TaxiRide]))
+    lazy val fareState: ValueState[TaxiFare] = getRuntimeContext.getState(
+      new ValueStateDescriptor[TaxiFare]("saved fare", classOf[TaxiFare]))
+
     override def flatMap1(ride: TaxiRide, out: Collector[(TaxiRide, TaxiFare)]): Unit = {
-      throw new MissingSolutionException()
+      val fare = fareState.value
+      if (fare != null) {
+        fareState.clear()
+        out.collect((ride, fare))
+      }
+      else {
+        rideState.update(ride)
+      }
     }
 
     override def flatMap2(fare: TaxiFare, out: Collector[(TaxiRide, TaxiFare)]): Unit = {
+      val ride = rideState.value
+      if (ride != null) {
+        rideState.clear()
+        out.collect((ride, fare))
+      }
+      else {
+        fareState.update(fare)
+      }
     }
-
   }
 
 }
